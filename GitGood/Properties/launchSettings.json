@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "GitGood": {
+      "commandName": "Project",
+
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+    }
+  }
+}
