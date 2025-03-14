@@ -45,6 +45,35 @@ internal static class McpDotNetExtensions
         return await factory.GetClientAsync(config.Id).ConfigureAwait(false);
     }
 
+
+    internal static async Task<IMcpClient> GetGitToolsAsync()
+    {
+        McpClientOptions options = new()
+        {
+            ClientInfo = new() { Name = "GitHub", Version = "1.0.0" }
+        };
+
+        var config = new McpServerConfig
+        {
+            Id = "git",
+            Name = "git",
+            TransportType = "stdio",
+            TransportOptions = new Dictionary<string, string>
+            {
+                ["command"] = "uvx",
+                ["arguments"] = "mcp-server-git"
+            }
+        };
+
+        var factory = new McpClientFactory(
+            [config],
+            options,
+            NullLoggerFactory.Instance
+        );
+
+        return await factory.GetClientAsync(config.Id).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Map the tools exposed on this <see cref="IMcpClient"/> to a collection of <see cref="KernelFunction"/> instances for use with the Semantic Kernel.
     /// </summary>
@@ -110,6 +139,7 @@ internal static class McpDotNetExtensions
             Type t when Nullable.GetUnderlyingType(t) == typeof(int) => Convert.ToInt32(value),
             Type t when Nullable.GetUnderlyingType(t) == typeof(double) => Convert.ToDouble(value),
             Type t when t == typeof(double) => Convert.ToDouble(value),
+            Type t when t == typeof(int) => Convert.ToInt32(value),
             Type t when Nullable.GetUnderlyingType(t) == typeof(bool) => Convert.ToBoolean(value),
             Type t when t == typeof(List<string>) => (value as IEnumerable<object>)?.ToList(),
             Type t when t == typeof(Dictionary<string, object>) => (value as Dictionary<string, object>)?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),

@@ -38,7 +38,8 @@ else
 Kernel kernel = builder.Build();
 
 // Create an MCPClient for the GitHub server
-var mcpClient = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]).ConfigureAwait(false);
+var mcpClient = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
+//var mcpClient = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]).ConfigureAwait(false);
 
 // Retrieve the list of tools available on the GitHub server
 var tools = await mcpClient.ListToolsAsync().ConfigureAwait(false);
@@ -49,7 +50,8 @@ foreach (var tool in tools.Tools)
 
 // Add the MCP tools as Kernel functions
 var functions = await mcpClient.MapToFunctionsAsync().ConfigureAwait(false);
-kernel.Plugins.AddFromFunctions("GitHub", functions);
+//kernel.Plugins.AddFromFunctions("GitHub", functions);
+kernel.Plugins.AddFromFunctions("Git", functions);
 
 // Enable automatic function calling
 var executionSettings = new OpenAIPromptExecutionSettings
@@ -58,12 +60,10 @@ var executionSettings = new OpenAIPromptExecutionSettings
     ReasoningEffort = config["OpenAI:ReasoningEffort"] ?? "medium",
 };
 
-// Test using GitHub tools
-var prompt = "Can you see what issues I have assigned?";
-
 var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
-ChatHistory chatHistory = new ChatHistory();
+var currentDirectory = Directory.GetCurrentDirectory();
+ChatHistory chatHistory = new ChatHistory($"You're a git helper.  You have access to MCP server that can interact with git.  You need to pass in {currentDirectory} as the repo_path when making MCP calls.");
 
 Console.WriteLine("Hi what can I do for you today?");
 
