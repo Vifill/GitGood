@@ -5,6 +5,8 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using ModelContextProtocol;
+using Spectre.Console;
+using System.Text;
 
 
 var config = new ConfigurationBuilder()
@@ -45,11 +47,18 @@ var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Gith
 var toolsGit = await mcpClientGit.ListToolsAsync().ConfigureAwait(false);
 var toolsGitHub = await mcpClientGitHub.ListToolsAsync().ConfigureAwait(false);
 
-Console.WriteLine("Local Git Tools:");
-foreach (var tool in toolsGit.Tools) Console.WriteLine($"{tool.Name}: {tool.Description}");
+// Display tools in a table
+var table = new Table()
+    .Border(TableBorder.Rounded)
+    .Title("[yellow]Available Tools[/]")
+    .AddColumn("[green]Source[/]")
+    .AddColumn("[cyan]Tool Name[/]")
+    .AddColumn("[grey]Description[/]");
 
-Console.WriteLine("\nGitHub Tools:");
-foreach (var tool in toolsGitHub.Tools) Console.WriteLine($"{tool.Name}: {tool.Description}");
+foreach (var tool in toolsGit.Tools) table.AddRow("Git", $"[green]{tool.Name}[/]", tool.Description);
+foreach (var tool in toolsGitHub.Tools) table.AddRow("GitHub", $"[blue]{tool.Name}[/]", tool.Description);
+
+AnsiConsole.Write(table);
 
 // Add both tool sets as separate plugins
 var gitFunctions = await mcpClientGit.MapToFunctionsAsync().ConfigureAwait(false);
@@ -68,24 +77,39 @@ var executionSettings = new OpenAIPromptExecutionSettings
 
 var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
+AnsiConsole.Write(new Rule("[yellow]GitGood Assistant[/]").RuleStyle("grey").LeftAligned());
+AnsiConsole.MarkupLine("[grey]Type 'exit' to quit[/]\n");
+
 var currentDirectory = Directory.GetCurrentDirectory();
 ChatHistory chatHistory = new ChatHistory(
     $"You're a git helper. You have access to both local git and GitHub via MCP servers. " +
     $"Use {currentDirectory} as the repo_path when making local git calls.");
 
-Console.WriteLine("Hi what can I do for you today?");
-
 while (true)
 {
-    chatHistory.AddUserMessage(Console.ReadLine() ?? " ");
+    var input = AnsiConsole.Prompt(
+        new TextPrompt<string>("[bold blue]❯ [/]")
+            .PromptStyle("white")
+            .ValidationErrorMessage("[red]Please enter a question[/]")
+    );
+    
+    if (input.Equals("exit", StringComparison.OrdinalIgnoreCase)) break;
 
-    string answer = "";
-    await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(chatHistory, executionSettings, kernel))
-    {
-        Console.Write(message);
-        answer += message;
-    }
-    Console.WriteLine();
+    chatHistory.AddUserMessage(input);
+    AnsiConsole.MarkupLine($"[grey]User:[/] {input}");
 
-    chatHistory.AddAssistantMessage(answer);
+    var assistantResponse = new StringBuilder();
+    await AnsiConsole.Status()
+        .StartAsync("Thinking...", async ctx =>
+        {
+            await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
+                               chatHistory, executionSettings, kernel))
+            {
+                assistantResponse.Append(message);
+                AnsiConsole.Markup($"[green]{message}[/]");
+            }
+        });
+    
+    AnsiConsole.WriteLine();
+    chatHistory.AddAssistantMessage(assistantResponse.ToString());
 }
