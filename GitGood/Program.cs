@@ -37,21 +37,25 @@ else
 
 Kernel kernel = builder.Build();
 
-// Create an MCPClient for the GitHub server
-var mcpClient = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
-//var mcpClient = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]).ConfigureAwait(false);
+// Create both MCP clients
+var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
+var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]).ConfigureAwait(false);
 
-// Retrieve the list of tools available on the GitHub server
-var tools = await mcpClient.ListToolsAsync().ConfigureAwait(false);
-foreach (var tool in tools.Tools)
-{
-    Console.WriteLine($"{tool.Name}: {tool.Description}");
-}
+// Retrieve and list tools from both servers
+var toolsGit = await mcpClientGit.ListToolsAsync().ConfigureAwait(false);
+var toolsGitHub = await mcpClientGitHub.ListToolsAsync().ConfigureAwait(false);
 
-// Add the MCP tools as Kernel functions
-var functions = await mcpClient.MapToFunctionsAsync().ConfigureAwait(false);
-//kernel.Plugins.AddFromFunctions("GitHub", functions);
-kernel.Plugins.AddFromFunctions("Git", functions);
+Console.WriteLine("Local Git Tools:");
+foreach (var tool in toolsGit.Tools) Console.WriteLine($"{tool.Name}: {tool.Description}");
+
+Console.WriteLine("\nGitHub Tools:");
+foreach (var tool in toolsGitHub.Tools) Console.WriteLine($"{tool.Name}: {tool.Description}");
+
+// Add both tool sets as separate plugins
+var gitFunctions = await mcpClientGit.MapToFunctionsAsync().ConfigureAwait(false);
+var githubFunctions = await mcpClientGitHub.MapToFunctionsAsync().ConfigureAwait(false);
+kernel.Plugins.AddFromFunctions("Git", gitFunctions);
+kernel.Plugins.AddFromFunctions("GitHub", githubFunctions);
 
 // Enable automatic function calling
 var executionSettings = new OpenAIPromptExecutionSettings
@@ -63,7 +67,9 @@ var executionSettings = new OpenAIPromptExecutionSettings
 var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
 var currentDirectory = Directory.GetCurrentDirectory();
-ChatHistory chatHistory = new ChatHistory($"You're a git helper.  You have access to MCP server that can interact with git.  You need to pass in {currentDirectory} as the repo_path when making MCP calls.");
+ChatHistory chatHistory = new ChatHistory(
+    $"You're a git helper. You have access to both local git and GitHub via MCP servers. " +
+    $"Use {currentDirectory} as the repo_path when making local git calls.");
 
 Console.WriteLine("Hi what can I do for you today?");
 
