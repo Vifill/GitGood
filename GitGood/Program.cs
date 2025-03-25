@@ -41,7 +41,7 @@ Kernel kernel = builder.Build();
 
 // Create both MCP clients
 var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
-var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]).ConfigureAwait(false);
+var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
 
 // Retrieve and list tools from both servers
 var toolsGit = await mcpClientGit.ListToolsAsync().ConfigureAwait(false);
@@ -55,8 +55,8 @@ var table = new Table()
     .AddColumn("[cyan]Tool Name[/]")
     .AddColumn("[grey]Description[/]");
 
-foreach (var tool in toolsGit.Tools) table.AddRow("Git", $"[green]{tool.Name}[/]", tool.Description);
-foreach (var tool in toolsGitHub.Tools) table.AddRow("GitHub", $"[blue]{tool.Name}[/]", tool.Description);
+foreach (var tool in toolsGit.Tools) table.AddRow("Git", $"[green]{tool.Name ?? ""}[/]", tool.Description ?? "");
+foreach (var tool in toolsGitHub.Tools) table.AddRow("GitHub", $"[blue]{tool.Name ?? ""}[/]", tool.Description ?? "");
 
 AnsiConsole.Write(table);
 
@@ -77,7 +77,7 @@ var executionSettings = new OpenAIPromptExecutionSettings
 
 var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 
-AnsiConsole.Write(new Rule("[yellow]GitGood Assistant[/]").RuleStyle("grey").LeftAligned());
+AnsiConsole.Write(new Rule("[yellow]GitGood Assistant[/]").RuleStyle("grey"));
 AnsiConsole.MarkupLine("[grey]Type 'exit' to quit[/]\n");
 
 var currentDirectory = Directory.GetCurrentDirectory();
