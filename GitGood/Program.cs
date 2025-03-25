@@ -61,7 +61,9 @@ kernel.Plugins.AddFromFunctions("GitHub", githubFunctions);
 var executionSettings = new OpenAIPromptExecutionSettings
 {
     FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
+#pragma warning disable SKEXP0010
     ReasoningEffort = config["OpenAI:ReasoningEffort"] ?? "medium",
+#pragma warning restore SKEXP0010
 };
 
 var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
