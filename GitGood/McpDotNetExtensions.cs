@@ -6,7 +6,7 @@ using McpDotNet.Protocol.Types;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.SemanticKernel;
 
-namespace ModelContextProtocol;
+namespace GitGood;
 
 /// <summary>
 /// Extension methods for McpDotNet

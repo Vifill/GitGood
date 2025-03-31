@@ -7,7 +7,26 @@
     <Nullable>enable</Nullable>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <UserSecretsId>eacee88a-04ac-4969-8f19-d8c57c658967</UserSecretsId>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>gitgood</ToolCommandName>
+    <PackageId>gitgood</PackageId>
+    <Authors>vafill</Authors>
+    <Company>GitGood</Company>
+    <Description>A smart Git commit assistant powered by AI that helps you write better commit messages</Description>
+    <PackageVersion>1.0.1</PackageVersion>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/vafill/gitgood</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/vafill/gitgood</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>git;commit;ai;openai;github;cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="mcpdotnet" Version="1.1.0.1" />

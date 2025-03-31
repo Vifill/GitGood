@@ -1,272 +1,228 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using Microsoft.Extensions.Configuration;
+﻿using System.Text;
+using McpDotNet.Client;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
-using ModelContextProtocol;
 using Spectre.Console;
-using System.Text;
-using System.Text.Json;
-using GitGood;
 
-string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-string configDir = Path.Combine(home, ".gitgood");
-Directory.CreateDirectory(configDir);
-string configPath = Path.Combine(configDir, "config.json");
+namespace GitGood;
 
-AppConfig appConfig;
-if (File.Exists(configPath))
+class Program
 {
-    try
+    static async Task Main(string[] args)
     {
-        string json = File.ReadAllText(configPath);
-        appConfig = JsonSerializer.Deserialize<AppConfig>(json) ?? new AppConfig();
-    }
-    catch
-    {
-        appConfig = new AppConfig();
-    }
-}
-else
-{
-    appConfig = new AppConfig();
-}
+        // Setup configuration
+        var configManager = new ConfigurationManager();
+        var appConfig = configManager.LoadConfig();
 
-if (args.Length > 0 && args[0].Equals("config", StringComparison.OrdinalIgnoreCase))
-{
-    appConfig.OpenAI.ApiKey = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your [green]OpenAI API key[/]:").Secret());
-    appConfig.OpenAI.ChatModelId = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your OpenAI Chat Model ID (default 'gpt-4o'):")
-            .DefaultValue("gpt-4o"));
-    appConfig.OpenAI.ReasoningEffort = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your OpenAI Reasoning Effort (default 'medium'):")
-            .DefaultValue("medium"));
-    appConfig.Github.PAT = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your [blue]GitHub PAT[/]:").Secret());
-
-    string newJson = JsonSerializer.Serialize(appConfig, new JsonSerializerOptions { WriteIndented = true });
-    File.WriteAllText(configPath, newJson);
-    AnsiConsole.MarkupLine("[green]Configuration updated successfully.[/]");
-    return;
-}
-
-bool updated = false;
-if (string.IsNullOrWhiteSpace(appConfig.OpenAI.ApiKey))
-{
-    appConfig.OpenAI.ApiKey = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your [green]OpenAI API key[/]:").Secret());
-    updated = true;
-}
-if (string.IsNullOrWhiteSpace(appConfig.Github.PAT))
-{
-    appConfig.Github.PAT = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your [blue]GitHub PAT[/]:").Secret());
-    updated = true;
-}
-if (string.IsNullOrWhiteSpace(appConfig.OpenAI.ChatModelId))
-{
-    appConfig.OpenAI.ChatModelId = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your OpenAI Chat Model ID (default 'gpt-4o'):")
-            .DefaultValue("gpt-4o"));
-    updated = true;
-}
-if (string.IsNullOrWhiteSpace(appConfig.OpenAI.ReasoningEffort))
-{
-    appConfig.OpenAI.ReasoningEffort = AnsiConsole.Prompt(
-        new TextPrompt<string>("Enter your OpenAI Reasoning Effort (default 'medium'):")
-            .DefaultValue("medium"));
-    updated = true;
-}
-if (updated)
-{
-    string newJson = JsonSerializer.Serialize(appConfig, new JsonSerializerOptions { WriteIndented = true });
-    File.WriteAllText(configPath, newJson);
-}
-
-var config = new ConfigurationBuilder()
-    .AddJsonFile(configPath, optional: false, reloadOnChange: true)
-    .AddEnvironmentVariables()
-    .Build();
-
-var builder = Kernel.CreateBuilder();
-builder.Services.AddLogging(c =>
-{
-    c.AddDebug();
-    c.AddConsole();
-    c.SetMinimumLevel(LogLevel.Warning);
-});
-
-if (!string.IsNullOrWhiteSpace(config["OpenAI:ApiKey"]))
-{
-    builder.Services.AddOpenAIChatCompletion(
-        serviceId: "openai",
-        modelId: config["OpenAI:ChatModelId"] ?? "gpt-4o",
-        apiKey: config["OpenAI:ApiKey"]!);
-}
-else
-{
-    Console.Error.WriteLine("Please provide a valid OpenAI:ApiKey (or OPENAI__ApiKey env variable)");
-    return;
-}
-
-Kernel kernel = builder.Build();
-
-var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
-var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
-
-var toolsGit = await mcpClientGit.ListToolsAsync().ConfigureAwait(false);
-var toolsGitHub = await mcpClientGitHub.ListToolsAsync().ConfigureAwait(false);
-
-var table = new Table()
-    .Border(TableBorder.Rounded)
-    .Title("[yellow]Available Tools[/]")
-    .AddColumn("[green]Source[/]")
-    .AddColumn("[cyan]Tool Name[/]")
-    .AddColumn("[grey]Description[/]");
-
-foreach (var tool in toolsGit.Tools)
-    table.AddRow("Git", $"[green]{tool.Name ?? ""}[/]", tool.Description ?? "");
-foreach (var tool in toolsGitHub.Tools)
-    table.AddRow("GitHub", $"[blue]{tool.Name ?? ""}[/]", tool.Description ?? "");
-
-AnsiConsole.Write(table);
-
-var gitFunctions = await mcpClientGit.MapToFunctionsAsync().ConfigureAwait(false);
-var githubFunctions = await mcpClientGitHub.MapToFunctionsAsync().ConfigureAwait(false);
-kernel.Plugins.AddFromFunctions("Git", gitFunctions);
-kernel.Plugins.AddFromFunctions("GitHub", githubFunctions);
-
-var executionSettings = new OpenAIPromptExecutionSettings
-{
-    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
-};
-
-var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
-
-if (args.Length > 0 && args[0].Equals("commit", StringComparison.OrdinalIgnoreCase))
-{
-    if (args.Length < 2)
-    {
-        AnsiConsole.MarkupLine("[red]Error: Organization parameter is missing. Usage: gitgood commit <OrgName>[/]");
-        return;
-    }
-    string org = args[1];
-    AnsiConsole.MarkupLine($"[yellow]Fetching assigned issues for organization '{org}'...[/]");
-    var issuesResponse = await mcpClientGitHub.CallToolAsync("search_issues", new Dictionary<string, object>
-    {
-        { "q", $"org:{org} is:issue is:open assignee:@me" }
-    });
-    var issuesText = issuesResponse.Content.FirstOrDefault(c => c.Type == "text")?.Text ?? "";
-    List<Issue> issues = new List<Issue>();
-    try
-    {
-        if (string.IsNullOrWhiteSpace(issuesText))
+        // Handle config command
+        if (args.Length > 0 && args[0].Equals("config", StringComparison.OrdinalIgnoreCase))
         {
-            AnsiConsole.MarkupLine("[red]No issues were returned from the API.[/]");
+            appConfig.OpenAi.ApiKey = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your [green]OpenAI API key[/]:").Secret());
+            appConfig.OpenAi.ChatModelId = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your OpenAI Chat Model ID (default 'gpt-4o'):")
+                    .DefaultValue("gpt-4o"));
+            appConfig.OpenAi.ReasoningEffort = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your OpenAI Reasoning Effort - used for o3 (default 'medium'):")
+                    .DefaultValue("medium"));
+            appConfig.Github.PAT = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your [blue]GitHub PAT[/]:").Secret());
+
+            configManager.SaveConfig(appConfig);
+            AnsiConsole.MarkupLine("[green]Configuration updated successfully.[/]");
             return;
         }
-        string trimmed = issuesText.TrimStart();
-        if (trimmed.StartsWith("{"))
+
+        // Prompt for any missing configuration
+        bool updated = false;
+        if (string.IsNullOrWhiteSpace(appConfig.OpenAi.ApiKey))
         {
-            using JsonDocument doc = JsonDocument.Parse(issuesText);
-            if (doc.RootElement.TryGetProperty("items", out JsonElement items) && items.ValueKind == JsonValueKind.Array)
-            {
-                issues = items.Deserialize<List<Issue>>() ?? new List<Issue>();
-            }
-            else
-            {
-                AnsiConsole.MarkupLine("[red]Unexpected JSON format for issues.[/]");
-                return;
-            }
+            appConfig.OpenAi.ApiKey = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your [green]OpenAI API key[/]:").Secret());
+            updated = true;
         }
-        else if (trimmed.StartsWith("["))
+        if (string.IsNullOrWhiteSpace(appConfig.Github.PAT))
         {
-            issues = JsonSerializer.Deserialize<List<Issue>>(issuesText) ?? new List<Issue>();
+            appConfig.Github.PAT = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your [blue]GitHub PAT[/]:").Secret());
+            updated = true;
+        }
+        if (string.IsNullOrWhiteSpace(appConfig.OpenAi.ChatModelId))
+        {
+            appConfig.OpenAi.ChatModelId = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your OpenAI Chat Model ID (default 'gpt-4o'):")
+                    .DefaultValue("gpt-4o"));
+            updated = true;
+        }
+        if (string.IsNullOrWhiteSpace(appConfig.OpenAi.ReasoningEffort))
+        {
+            appConfig.OpenAi.ReasoningEffort = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter your OpenAI Reasoning Effort (default 'medium'):")
+                    .DefaultValue("medium"));
+            updated = true;
+        }
+        if (updated)
+        {
+            configManager.SaveConfig(appConfig);
+        }
+
+        // Initialize configuration for Kernel
+        string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string configDir = Path.Combine(appDataDir, ".gitgood");
+        Directory.CreateDirectory(configDir);
+        string configPath = Path.Combine(configDir, "config.json");
+
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(configPath, optional: false, reloadOnChange: true)
+            .AddEnvironmentVariables()
+            .Build();
+
+        // Initialize Kernel
+        var builder = Kernel.CreateBuilder();
+        builder.Services.AddLogging(c =>
+        {
+            c.AddDebug();
+            c.AddConsole();
+            c.SetMinimumLevel(LogLevel.Warning);
+        });
+
+        if (!string.IsNullOrWhiteSpace(config["OpenAI:ApiKey"]))
+        {
+            builder.Services.AddOpenAIChatCompletion(
+                serviceId: "openai",
+                modelId: config["OpenAI:ChatModelId"] ?? "gpt-4o",
+                apiKey: config["OpenAI:ApiKey"]!);
         }
         else
         {
-            AnsiConsole.MarkupLine("[red]Unexpected JSON format for issues.[/]");
+            AnsiConsole.MarkupLine("[red]Please provide a valid OpenAI:ApiKey (or OPENAI__ApiKey env variable)[/]");
             return;
         }
-    }
-    catch (Exception ex)
-    {
-        AnsiConsole.MarkupLine($"[red]Error parsing issues: {Markup.Escape(ex.Message)}[/]");
-        return;
-    }
-    if (issues.Count == 0)
-    {
-        AnsiConsole.MarkupLine("[red]No open issues found.[/]");
-        return;
-    }
-    var selectedIssue = AnsiConsole.Prompt(
-        new SelectionPrompt<Issue>()
-            .Title("Select an issue to connect this commit to:")
-            .PageSize(10)
-            .AddChoices(issues)
-            .UseConverter(issue => Markup.Escape($"#{issue.Number}: {issue.Title}")));
-    
-    AnsiConsole.MarkupLine("[yellow]Fetching staged changes...[/]");
-    var changesResponse = await mcpClientGit.CallToolAsync("get_staged_changes", new Dictionary<string, object>() 
-    {
-        { "repo_path", Directory.GetCurrentDirectory() }
-    });
-    var changes = changesResponse.Content.FirstOrDefault(c => c.Type == "text")?.Text ?? "";
-    if (string.IsNullOrWhiteSpace(changes))
-    {
-        AnsiConsole.MarkupLine("[red]No staged changes found.[/]");
-        return;
-    }
-    
-    AnsiConsole.MarkupLine("[yellow]Summarizing changes...[/]");
-    string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff:\n{changes}";
-    string summary = "";
-    await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(new ChatHistory(promptTextForSummary), executionSettings, kernel))
-    {
-        summary += message;
-    }
-    
-    string commitMessage = $"Closing #{selectedIssue.Number}. {summary}";
-    AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{commitMessage}");
-    AnsiConsole.MarkupLine($"Run the following command:\n[blue]git commit -m \"{commitMessage}\"[/]");
-    return;
-}
 
-AnsiConsole.Write(new Rule("[yellow]GitGood Assistant[/]").RuleStyle("grey"));
-AnsiConsole.MarkupLine("[grey]Type 'exit' to quit[/]\n");
+        Kernel kernel = builder.Build();
 
-string currentDirectory = Directory.GetCurrentDirectory();
-ChatHistory chatHistory = new ChatHistory($"You're a git helper. You have access to both local git and GitHub via MCP servers. Use {currentDirectory} as the repo_path when making local git calls.");
+        // Initialize MCP clients
+        var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
+        var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
 
-while (true)
-{
-    var input = AnsiConsole.Prompt(new TextPrompt<string>("[bold blue]❯ [/]").ValidationErrorMessage("[red]Please enter a question[/]"));
-    if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
-        break;
-    chatHistory.AddUserMessage(input);
-    AnsiConsole.MarkupLine($"[grey]User:[/] {input}");
-    var assistantResponse = new StringBuilder();
-    var initialPanel = new Panel(new Markup("[green]Starting...[/]"))
-    {
-        Border = BoxBorder.Rounded,
-        Padding = new Padding(1, 1)
-    };
-    await AnsiConsole.Live(initialPanel).StartAsync(async ctx =>
-    {
-        await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(chatHistory, executionSettings, kernel))
+        // Display available tools
+        await DisplayAvailableToolsAsync(mcpClientGit, mcpClientGitHub);
+
+        // Register plugins
+        await RegisterPluginsAsync(kernel, mcpClientGit, mcpClientGitHub);
+
+        var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+
+        // Handle commit command
+        if (args.Length > 0 && args[0].Equals("commit", StringComparison.OrdinalIgnoreCase))
         {
-            assistantResponse.Append(message);
-            var panel = new Panel(new Markup($"[green]{Markup.Escape(assistantResponse.ToString())}[/]"))
+            if (args.Length < 2)
+            {
+                AnsiConsole.MarkupLine("[red]Error: Organization parameter is missing. Usage: gitgood commit <OrgName>[/]");
+                return;
+            }
+
+            string org = args[1];
+            var commitHandler = new CommitCommandHandler();
+            await commitHandler.HandleAsync(org, mcpClientGit, mcpClientGitHub, chatCompletionService, kernel);
+            return;
+        }
+
+        // Start interactive chat
+        await StartInteractiveChatAsync(kernel, chatCompletionService);
+    }
+
+    static async Task DisplayAvailableToolsAsync(IMcpClient gitClient, IMcpClient githubClient)
+    {
+        var toolsGit = await gitClient.ListToolsAsync().ConfigureAwait(false);
+        var toolsGitHub = await githubClient.ListToolsAsync().ConfigureAwait(false);
+
+        var table = new Table()
+            .Border(TableBorder.Rounded)
+            .Title("[yellow]Available Tools[/]")
+            .AddColumn("[green]Source[/]")
+            .AddColumn("[cyan]Tool Name[/]")
+            .AddColumn("[grey]Description[/]");
+
+        foreach (var tool in toolsGit.Tools)
+        {
+            table.AddRow(
+                new Text("Git"),
+                new Markup($"[green]{tool.Name ?? ""}[/]"),
+                new Text(tool.Description ?? "")
+            );
+        }
+
+        foreach (var tool in toolsGitHub.Tools)
+        {
+            table.AddRow(
+                new Text("GitHub"),
+                new Markup($"[blue]{tool.Name ?? ""}[/]"),
+                new Text(tool.Description ?? "")
+            );
+        }
+
+        AnsiConsole.Write(table);
+    }
+
+    static async Task RegisterPluginsAsync(Kernel kernel, IMcpClient gitClient, IMcpClient githubClient)
+    {
+        var gitFunctions = await gitClient.MapToFunctionsAsync().ConfigureAwait(false);
+        var githubFunctions = await githubClient.MapToFunctionsAsync().ConfigureAwait(false);
+
+        // Use explicit plugin registration methods
+        var gitPlugin = KernelPluginFactory.CreateFromFunctions("Git", gitFunctions);
+        var githubPlugin = KernelPluginFactory.CreateFromFunctions("GitHub", githubFunctions);
+
+        kernel.Plugins.Add(gitPlugin);
+        kernel.Plugins.Add(githubPlugin);
+    }
+
+    static async Task StartInteractiveChatAsync(Kernel kernel, IChatCompletionService chatCompletionService)
+    {
+        AnsiConsole.Write(new Rule("[yellow]GitGood Assistant[/]").RuleStyle("grey"));
+        AnsiConsole.MarkupLine("[grey]Type 'exit' to quit[/]\n");
+
+        string currentDirectory = Directory.GetCurrentDirectory();
+        ChatHistory chatHistory = new ChatHistory($"You're a git helper. You have access to both local git and GitHub via MCP servers. Use {currentDirectory} as the repo_path when making local git calls.");
+
+        while (true)
+        {
+            var input = AnsiConsole.Prompt(new TextPrompt<string>("[bold blue]❯ [/]").ValidationErrorMessage("[red]Please enter a question[/]"));
+            if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
+                break;
+            chatHistory.AddUserMessage(input);
+            AnsiConsole.MarkupLine($"[grey]User:[/] {input}");
+            var assistantResponse = new StringBuilder();
+            var initialPanel = new Panel(new Markup("[green]Starting...[/]"))
             {
                 Border = BoxBorder.Rounded,
                 Padding = new Padding(1, 1)
             };
-            ctx.UpdateTarget(panel);
-            ctx.Refresh();
+            await AnsiConsole.Live(initialPanel).StartAsync(async ctx =>
+            {
+                // Pass null for the PromptExecutionSettings parameter
+                await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
+                                   chatHistory,
+                                   null,
+                                   kernel))
+                {
+                    assistantResponse.Append(message);
+                    var panel = new Panel(new Markup($"[green]{Markup.Escape(assistantResponse.ToString())}[/]"))
+                    {
+                        Border = BoxBorder.Rounded,
+                        Padding = new Padding(1, 1)
+                    };
+                    ctx.UpdateTarget(panel);
+                    ctx.Refresh();
+                }
+            });
+            AnsiConsole.WriteLine();
+            chatHistory.AddAssistantMessage(assistantResponse.ToString());
         }
-    });
-    AnsiConsole.WriteLine();
-    chatHistory.AddAssistantMessage(assistantResponse.ToString());
+    }
 }
