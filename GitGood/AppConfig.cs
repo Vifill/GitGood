@@ -14,4 +14,5 @@ public class OpenAiConfig
 public class GithubConfig
 {
     public string PAT { get; set; } = "";
+    public string DefaultOrg { get; set; } = "";
 }

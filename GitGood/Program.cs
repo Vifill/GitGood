@@ -21,16 +21,48 @@ class Program
         // Handle config command
         if (args.Length > 0 && args[0].Equals("config", StringComparison.OrdinalIgnoreCase))
         {
-            appConfig.OpenAi.ApiKey = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter your [green]OpenAI API key[/]:").Secret());
-            appConfig.OpenAi.ChatModelId = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter your OpenAI Chat Model ID (default 'gpt-4o'):")
-                    .DefaultValue("gpt-4o"));
-            appConfig.OpenAi.ReasoningEffort = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter your OpenAI Reasoning Effort - used for o3 (default 'medium'):")
-                    .DefaultValue("medium"));
-            appConfig.Github.PAT = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter your [blue]GitHub PAT[/]:").Secret());
+            var currentApiKey = appConfig.OpenAi.ApiKey;
+            var currentModelId = appConfig.OpenAi.ChatModelId;
+            var currentReasoningEffort = appConfig.OpenAi.ReasoningEffort;
+            var currentPat = appConfig.Github.PAT;
+            var currentOrg = appConfig.Github.DefaultOrg;
+
+            AnsiConsole.MarkupLine("[yellow]Press Enter to keep existing values[/]\n");
+
+            var newApiKey = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Enter your [green]OpenAI API key[/] (current: {(string.IsNullOrEmpty(currentApiKey) ? "not set" : "********")}):")
+                    .Secret()
+                    .AllowEmpty());
+            if (!string.IsNullOrEmpty(newApiKey))
+                appConfig.OpenAi.ApiKey = newApiKey;
+
+            var newModelId = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Enter your OpenAI Chat Model ID (current: {currentModelId}):")
+                    .DefaultValue(string.IsNullOrEmpty(currentModelId) ? "gpt-4o" : currentModelId)
+                    .AllowEmpty());
+            if (!string.IsNullOrEmpty(newModelId))
+                appConfig.OpenAi.ChatModelId = newModelId;
+
+            var newReasoningEffort = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Enter your OpenAI Reasoning Effort (current: {currentReasoningEffort}):")
+                    .DefaultValue(string.IsNullOrEmpty(currentReasoningEffort) ? "medium" : currentReasoningEffort)
+                    .AllowEmpty());
+            if (!string.IsNullOrEmpty(newReasoningEffort))
+                appConfig.OpenAi.ReasoningEffort = newReasoningEffort;
+
+            var newPat = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Enter your [blue]GitHub PAT[/] (current: {(string.IsNullOrEmpty(currentPat) ? "not set" : "********")}):")
+                    .Secret()
+                    .AllowEmpty());
+            if (!string.IsNullOrEmpty(newPat))
+                appConfig.Github.PAT = newPat;
+
+            var newOrg = AnsiConsole.Prompt(
+                new TextPrompt<string>($"Enter your [blue]default GitHub organization[/] (current: {(string.IsNullOrEmpty(currentOrg) ? "not set" : currentOrg)}):")
+                    .DefaultValue(string.IsNullOrEmpty(currentOrg) ? "" : currentOrg)
+                    .AllowEmpty());
+            if (!string.IsNullOrEmpty(newOrg))
+                appConfig.Github.DefaultOrg = newOrg;
 
             configManager.SaveConfig(appConfig);
             AnsiConsole.MarkupLine("[green]Configuration updated successfully.[/]");
@@ -120,13 +152,24 @@ class Program
         // Handle commit command
         if (args.Length > 0 && args[0].Equals("commit", StringComparison.OrdinalIgnoreCase))
         {
+            string org;
             if (args.Length < 2)
             {
-                AnsiConsole.MarkupLine("[red]Error: Organization parameter is missing. Usage: gitgood commit <OrgName>[/]");
-                return;
+                if (string.IsNullOrWhiteSpace(appConfig.Github.DefaultOrg))
+                {
+                    AnsiConsole.MarkupLine("[red]Error: No organization specified and no default organization configured.[/]");
+                    AnsiConsole.MarkupLine("[yellow]Please either:[/]");
+                    AnsiConsole.MarkupLine("1. Run 'gitgood commit <OrgName>' with an organization name");
+                    AnsiConsole.MarkupLine("2. Run 'gitgood config' to set a default organization");
+                    return;
+                }
+                org = appConfig.Github.DefaultOrg;
+            }
+            else
+            {
+                org = args[1];
             }
 
-            string org = args[1];
             var commitHandler = new CommitCommandHandler();
             await commitHandler.HandleAsync(org, mcpClientGit, mcpClientGitHub, chatCompletionService, kernel);
             return;
