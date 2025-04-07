@@ -7,6 +7,7 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Spectre.Console;
+using System.Diagnostics;
 
 namespace GitGood;
 
@@ -141,6 +142,23 @@ class Program
         var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
         var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
 
+        // Get git remote URL to infer org and project
+        string? inferredOrg = null;
+        string? inferredProject = null;
+        
+        var remoteUrl = await GitProcessUtils.GetRemoteUrlAsync();
+        if (!string.IsNullOrEmpty(remoteUrl))
+        {
+            // Parse GitHub URL format: https://github.com/org/repo.git or git@github.com:org/repo.git
+            var match = System.Text.RegularExpressions.Regex.Match(remoteUrl, @"(?:github\.com[/:])([^/]+)/([^/]+?)(?:\.git)?$");
+            if (match.Success)
+            {
+                inferredOrg = match.Groups[1].Value;
+                inferredProject = match.Groups[2].Value;
+                AnsiConsole.MarkupLine($"[grey]Inferred organization: {inferredOrg}, project: {inferredProject}[/]");
+            }
+        }
+
         // Display available tools
         await DisplayAvailableToolsAsync(mcpClientGit, mcpClientGitHub);
 
@@ -155,7 +173,12 @@ class Program
             string org;
             if (args.Length < 2)
             {
-                if (string.IsNullOrWhiteSpace(appConfig.Github.DefaultOrg))
+                if (inferredOrg != null)
+                {
+                    org = inferredOrg;
+                    AnsiConsole.MarkupLine($"[grey]Using inferred organization: {org}[/]");
+                }
+                else if (string.IsNullOrWhiteSpace(appConfig.Github.DefaultOrg))
                 {
                     AnsiConsole.MarkupLine("[red]Error: No organization specified and no default organization configured.[/]");
                     AnsiConsole.MarkupLine("[yellow]Please either:[/]");
@@ -163,7 +186,10 @@ class Program
                     AnsiConsole.MarkupLine("2. Run 'gitgood config' to set a default organization");
                     return;
                 }
-                org = appConfig.Github.DefaultOrg;
+                else
+                {
+                    org = appConfig.Github.DefaultOrg;
+                }
             }
             else
             {
@@ -177,6 +203,41 @@ class Program
 
         // Start interactive chat
         await StartInteractiveChatAsync(kernel, chatCompletionService);
+    }
+
+    private static async Task<string?> GetGitRemoteUrlAsync()
+    {
+        try
+        {
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "git",
+                Arguments = "remote get-url origin",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            var process = Process.Start(processInfo);
+            if (process != null)
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    return output.Trim();
+                }
+            }
+        }
+        catch
+        {
+            // If any error occurs, return null
+        }
+
+        return null;
     }
 
     static async Task DisplayAvailableToolsAsync(IMcpClient gitClient, IMcpClient githubClient)

@@ -20,7 +20,7 @@ namespace GitGood
         public async Task HandleAsync(string org, IMcpClient gitClient, IMcpClient gitHubClient, IChatCompletionService chatCompletionService, Kernel kernel)
         {
             // Check if we're in a git repository
-            string repoRootPath = await FindGitRepositoryRootAsync();
+            string? repoRootPath = await GitProcessUtils.FindRepositoryRootAsync();
             if (string.IsNullOrEmpty(repoRootPath))
             {
                 AnsiConsole.MarkupLine("[red]Error: Not inside a git repository.[/]");
@@ -53,6 +53,7 @@ namespace GitGood
                 }
 
                 List<Issue> issues = [];
+                Issue? selectedIssue = null;
                 try
                 {
                     if (string.IsNullOrWhiteSpace(issuesText))
@@ -91,22 +92,23 @@ namespace GitGood
                 }
                 if (issues.Count == 0)
                 {
-                    AnsiConsole.MarkupLine("[red]No open issues found.[/]");
-                    return;
+                    AnsiConsole.MarkupLine("[yellow]No open issues found. Proceeding with commit message generation...[/]");
                 }
-
-                string IssueConverter(Issue issue)
+                else
                 {
-                    return Markup.Escape($"#{issue.Number}: {issue.Title}");
-                }
+                    string IssueConverter(Issue issue)
+                    {
+                        return Markup.Escape($"#{issue.Number}: {issue.Title}");
+                    }
 
-                var selectedIssue = AnsiConsole.Prompt(
-                    new SelectionPrompt<Issue>()
-                        .Title("Select an issue to connect this commit to:")
-                        .PageSize(10)
-                        .AddChoices(issues)
-                        .UseConverter(IssueConverter)
-                );
+                    selectedIssue = AnsiConsole.Prompt(
+                        new SelectionPrompt<Issue>()
+                            .Title("Select an issue to connect this commit to:")
+                            .PageSize(10)
+                            .AddChoices(issues)
+                            .UseConverter(IssueConverter)
+                    );
+                }
 
                 AnsiConsole.MarkupLine("[yellow]Fetching staged changes...[/]");
                 var changesResponse = await gitClient.CallToolAsync("git_diff_staged", new Dictionary<string, object>
@@ -133,7 +135,7 @@ namespace GitGood
 
                 AnsiConsole.MarkupLine($"[yellow]Summarizing changes...[/]");
                 AnsiConsole.MarkupLineInterpolated($"[grey]{changes}[/]");
-                string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff:\n{changes}";
+                string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff.  If no diff is found, return 'No changes'.  Diff:\n{changes}";
                 string summary = "";
 
                 // Use null for the execution settings to avoid type conversion issues
@@ -145,10 +147,13 @@ namespace GitGood
                     summary += message;
                 }
 
-                string commitMessage = $"Closing #{selectedIssue.Number}. {summary}";
-                AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{commitMessage}");
+                string finalCommitMessage = selectedIssue != null 
+                    ? $"Closing #{selectedIssue.Number}. {summary}" 
+                    : summary;
+                    
+                AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{finalCommitMessage}");
 
-                string gitCommand = $"git commit -m \"{commitMessage}\"";
+                string gitCommand = $"git commit -m \"{finalCommitMessage}\"";
                 AnsiConsole.MarkupLine($"[blue]Command: {gitCommand}[/]");
 
                 var choice = AnsiConsole.Prompt(
@@ -171,7 +176,7 @@ namespace GitGood
                             var processInfo = new ProcessStartInfo
                             {
                                 FileName = "git",
-                                Arguments = $"commit -m \"{commitMessage.Replace("\"", "\\\"")}\"",
+                                Arguments = $"commit -m \"{finalCommitMessage.Replace("\"", "\\\"")}\"",
                                 WorkingDirectory = repoRootPath,
                                 UseShellExecute = false,
                                 RedirectStandardOutput = true,

@@ -30,7 +30,7 @@ dotnet pack -c Release
 
 # Push to NuGet
 echo "📤 Publishing to NuGet..."
-dotnet nuget push "bin/Release/gitgood.1.0.0.nupkg" --api-key "$NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json"
+dotnet nuget push "bin/Release/gitgood.1.0.4.nupkg" --api-key "$NUGET_API_KEY" --source "https://api.nuget.org/v3/index.json"
 
 echo "✅ GitGood has been published successfully!"
 echo ""
