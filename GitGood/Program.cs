@@ -294,6 +294,12 @@ class Program
         string currentDirectory = Directory.GetCurrentDirectory();
         ChatHistory chatHistory = new ChatHistory($"You're a git helper. You have access to both local git and GitHub via MCP servers. Use {currentDirectory} as the repo_path when making local git calls.");
 
+        // Create execution settings that enable tool usage
+        var executionSettings = new OpenAIPromptExecutionSettings
+        {
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions
+        };
+
         while (true)
         {
             var input = AnsiConsole.Prompt(new TextPrompt<string>("[bold blue]❯ [/]").ValidationErrorMessage("[red]Please enter a question[/]"));
@@ -309,10 +315,9 @@ class Program
             };
             await AnsiConsole.Live(initialPanel).StartAsync(async ctx =>
             {
-                // Pass null for the PromptExecutionSettings parameter
                 await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
                                    chatHistory,
-                                   null,
+                                   executionSettings,  // Use the execution settings
                                    kernel))
                 {
                     assistantResponse.Append(message);
