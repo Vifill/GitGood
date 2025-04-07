@@ -101,12 +101,15 @@ namespace GitGood
                         return Markup.Escape($"#{issue.Number}: {issue.Title}");
                     }
 
+                    // Add a null option at the top of the list to represent skipping
+                    var allOptions = new List<Issue?> { null }.Concat(issues).ToList();
+                    
                     selectedIssue = AnsiConsole.Prompt(
-                        new SelectionPrompt<Issue>()
-                            .Title("Select an issue to connect this commit to:")
+                        new SelectionPrompt<Issue?>()
+                            .Title("Select an issue to connect this commit to (or skip):")
                             .PageSize(10)
-                            .AddChoices(issues)
-                            .UseConverter(IssueConverter)
+                            .AddChoices(allOptions)
+                            .UseConverter(issue => issue == null ? "[grey]Skip issue number[/]" : IssueConverter(issue))
                     );
                 }
 
@@ -133,23 +136,45 @@ namespace GitGood
                     return;
                 }
 
-                AnsiConsole.MarkupLine($"[yellow]Summarizing changes...[/]");
-                AnsiConsole.MarkupLineInterpolated($"[grey]{changes}[/]");
-                string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff.  If no diff is found, return 'No changes'.  Diff:\n{changes}";
                 string summary = "";
-
-                // Use null for the execution settings to avoid type conversion issues
-                await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
-                    new ChatHistory(promptTextForSummary),
-                    null,
-                    kernel))
+                try
                 {
-                    summary += message;
+                    if (chatCompletionService != null && kernel != null)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]Summarizing changes...[/]");
+                        AnsiConsole.MarkupLineInterpolated($"[grey]{changes}[/]");
+                        string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff.  If no diff is found, return 'No changes'.  Diff:\n{changes}";
+
+                        // Use null for the execution settings to avoid type conversion issues
+                        await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
+                            new ChatHistory(promptTextForSummary),
+                            null,
+                            kernel))
+                        {
+                            summary += message;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Warning: Failed to generate AI summary: {ex.Message}[/]");
+                    AnsiConsole.MarkupLine("[yellow]Continuing with basic commit message...[/]");
                 }
 
-                string finalCommitMessage = selectedIssue != null 
-                    ? $"Closing #{selectedIssue.Number}. {summary}" 
-                    : summary;
+                string finalCommitMessage;
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    // If no summary was generated, use a basic message
+                    finalCommitMessage = selectedIssue != null 
+                        ? $"Closing #{selectedIssue.Number}" 
+                        : "Update";
+                }
+                else
+                {
+                    finalCommitMessage = selectedIssue != null 
+                        ? $"Closing #{selectedIssue.Number}. {summary}" 
+                        : summary;
+                }
                     
                 AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{finalCommitMessage}");
 
