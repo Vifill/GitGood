@@ -141,18 +141,24 @@ namespace GitGood
                 {
                     if (chatCompletionService != null && kernel != null)
                     {
-                        AnsiConsole.MarkupLine($"[yellow]Summarizing changes...[/]");
-                        AnsiConsole.MarkupLineInterpolated($"[grey]{changes}[/]");
-                        string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff.  If no diff is found, return 'No changes'.  Diff:\n{changes}";
+                        // AnsiConsole.MarkupLine($"[grey]{changes}[/]");
+                        
+                        await AnsiConsole.Status()
+                            .Spinner(Spinner.Known.Dots)
+                            .SpinnerStyle(Style.Parse("green"))
+                            .StartAsync("Summarizing changes...", async ctx => 
+                            {
+                                string promptTextForSummary = $"Generate a brief, imperative commit message summarizing the diff.  If no diff is found, return 'No changes'.  Diff:\n{changes}";
 
-                        // Use null for the execution settings to avoid type conversion issues
-                        await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
-                            new ChatHistory(promptTextForSummary),
-                            null,
-                            kernel))
-                        {
-                            summary += message;
-                        }
+                                await foreach (var message in chatCompletionService.GetStreamingChatMessageContentsAsync(
+                                    new ChatHistory(promptTextForSummary),
+                                    null,
+                                    kernel))
+                                {
+                                    summary += message;
+                                    ctx.Status($"[yellow]Summarizing changes:[/] {summary}");
+                                }
+                            });
                     }
                 }
                 catch (Exception ex)
@@ -176,7 +182,7 @@ namespace GitGood
                         : summary;
                 }
                     
-                AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{finalCommitMessage}");
+                // AnsiConsole.MarkupLine($"[green]Commit message generated:[/]\n{finalCommitMessage}");
 
                 string gitCommand = $"git commit -m \"{finalCommitMessage}\"";
                 AnsiConsole.MarkupLine($"[blue]Command: {gitCommand}[/]");

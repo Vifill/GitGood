@@ -139,8 +139,22 @@ class Program
         Kernel kernel = builder.Build();
 
         // Initialize MCP clients
-        var mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
-        var mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
+        IMcpClient mcpClientGit = null;
+        IMcpClient mcpClientGitHub = null;
+
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("blue"))
+            .StartAsync("Initializing Git tools...", async ctx =>
+            {
+                ctx.Status("[blue]Starting Git MCP server...[/]");
+                mcpClientGit = await McpDotNetExtensions.GetGitToolsAsync().ConfigureAwait(false);
+                AnsiConsole.MarkupLine("[blue]✓[/] Git MCP server started");
+
+                ctx.Status("[blue]Starting GitHub MCP server...[/]");
+                mcpClientGitHub = await McpDotNetExtensions.GetGitHubToolsAsync(config["Github:PAT"]!).ConfigureAwait(false);
+                AnsiConsole.MarkupLine("[blue]✓[/] GitHub MCP server started");
+            });
 
         // Get git remote URL to infer org and project
         string? inferredOrg = null;
@@ -159,11 +173,20 @@ class Program
             }
         }
 
-        // Display available tools
-        await DisplayAvailableToolsAsync(mcpClientGit, mcpClientGitHub);
-
-        // Register plugins
-        await RegisterPluginsAsync(kernel, mcpClientGit, mcpClientGitHub);
+        // Display available tools and register plugins
+        await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("green"))
+            .StartAsync("Loading tools...", async ctx =>
+            {
+                ctx.Status("[green]Retrieving available tools...[/]");
+                await DisplayAvailableToolsAsync(mcpClientGit, mcpClientGitHub);
+                AnsiConsole.MarkupLine("[green]✓[/] Tools retrieved successfully");
+                
+                ctx.Status("[green]Registering tools with kernel...[/]");
+                await RegisterPluginsAsync(kernel, mcpClientGit, mcpClientGitHub);
+                AnsiConsole.MarkupLine("[green]✓[/] Tools registered with kernel");
+            });
 
         var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
 

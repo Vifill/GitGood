@@ -13,7 +13,7 @@
     <Authors>Vifill</Authors>
     <Company>GitGood</Company>
     <Description>A smart Git commit assistant powered by AI that helps you write better commit messages</Description>
-    <PackageVersion>1.0.7</PackageVersion>
+    <PackageVersion>1.0.8</PackageVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/vafill/gitgood</PackageProjectUrl>
     <RepositoryUrl>https://github.com/vafill/gitgood</RepositoryUrl>
