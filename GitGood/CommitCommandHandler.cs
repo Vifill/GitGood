@@ -172,13 +172,13 @@ namespace GitGood
                 {
                     // If no summary was generated, use a basic message
                     finalCommitMessage = selectedIssue != null 
-                        ? $"Closing #{selectedIssue.Number}" 
+                        ? $"Closes #{selectedIssue.Number}" 
                         : "Update";
                 }
                 else
                 {
                     finalCommitMessage = selectedIssue != null 
-                        ? $"Closing #{selectedIssue.Number}. {summary}" 
+                        ? $"Closes #{selectedIssue.Number}. {summary}" 
                         : summary;
                 }
                     
